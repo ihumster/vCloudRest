@@ -168,7 +168,7 @@ function Find-vCloudObject {
     #endregion
     $connection = Get-Connection
 
-    if ($connection -eq $null -and $connection.IsConnected) {
+    if ($connection -ne $null -and $connection.IsConnected) {
         Invoke-vCloudRequest -Href "$($connection.ServiceUri)/query?type=$QueryType&pageSize=$PageSize&format=$Format&filter=$Filter" -Method Get
     }
 
