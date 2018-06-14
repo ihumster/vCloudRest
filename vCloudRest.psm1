@@ -1,13 +1,41 @@
-﻿function Get-Connection {
-
+﻿<#
+.Synopsis
+    Get current vCloud Director connection. Show Menu (used ps-menu) for two or more connections.
+.DESCRIPTION
+    Get current vCloud Director connection. Show Menu (used ps-menu) for two or more connections.
+.EXAMPLE
+    $connection = Get-Connection
+.OUTPUTS
+    Cmdlet return object with vCloud Director connection from $global:DefaultCIServers array or show error with proposal to connect
+#>
+function Get-Connection {
     switch ($global:DefaultCIServers.Count) {        
         0 { throw "You are not currently connected to any servers. Please connect first using a Connect-CIServer cmdlet."; $null; break }
         1 { $global:DefaultCIServers[0]; break }
-        Default { Menu $global:DefaultCIServers}
+        Default {
+            Write-Host "Select vCloud Director Connection" -ForegroundColor Yellow -BackgroundColor Red
+            Menu $global:DefaultCIServers
+        }
     }
 }
 
 
+<#
+.Synopsis
+    Executes a request to the REST API vCloud Director endpoint and return xml object
+.DESCRIPTION
+    Executes a request to the REST API vCloud Director endpoint and return xml object. Supports Get, Post, Put and Delete methods.
+.EXAMPLE
+    $adminObj = Invoke-vCloudRequest -Href "https://vcloud.fqdn/api/admin" -Method Get
+.EXAMPLE
+    $vAppObj = Invoke-vCloudRequest -Href "https://vcloud.fqdn/api/vApp/vapp-1" -Method Get
+    $vAppObj.VApp.Description = "add description"
+    Invoke-vCloudRequest -Href "https://vcloud.fqdn/api/vApp/vapp-1" -Method Put -ContentType "application/vnd.vmware.vcloud.vApp+xml" -Body $vAppObj
+
+    This example demonstrate update vApp process.
+.OUTPUTS
+   Cmdlet return XML Object
+#>
 function Invoke-vCloudRequest {
     #region Params
     [OutputType([xml])]
@@ -19,8 +47,10 @@ function Invoke-vCloudRequest {
         $Body,
         [parameter(Mandatory = $false)]
         [string]$ContentType,
+        [parameter(Mandatory = $false)]
+        [string]$Version = '27.0',
         [parameter(Mandatory = $true)]
-        [ValidateSet("Get", "Post", "Put")]
+        [ValidateSet("Get", "Post", "Put", "Delete")]
         [string]$Method
     )
     #endregion
@@ -31,7 +61,7 @@ function Invoke-vCloudRequest {
 
         $webclient = New-Object System.Net.WebClient
         $webclient.Headers.Add("x-vcloud-authorization", $connection.SessionSecret)
-        $webclient.Headers.Add("Accept", "application/*+xml;version=")
+        $webclient.Headers.Add("Accept", "application/*+xml;version=$Version")
         $webclient.Headers.Add("Accept-Language: en")
         if ($ContentType) {
             $webclient.Headers.Add("Content-Type", $ContentType)
@@ -77,6 +107,15 @@ function Invoke-vCloudRequest {
                 }
                 catch {
                     throw "An error occured attempting to make HTTP PUT against $Href"
+                }
+
+            }
+            "Delete" {
+                try {
+                    $UploadData = $webclient.UploadData($Href, "DELETE", $bytearray)
+                }
+                catch {
+                    throw "An error occured attempting to make HTTP DELETE against $Href"
                 }
 
             }
@@ -127,8 +166,6 @@ function Find-vCloudObject {
         [string]$PageSize = "25"
     )
     #endregion
-
-
     $connection = Get-Connection
 
     if ($connection -eq $null -and $connection.IsConnected) {
@@ -137,6 +174,16 @@ function Find-vCloudObject {
 
 }
 
+<#
+.Synopsis
+    Removing vApp Network from running vApp. (You can not do this action when running vApp from the UI.)
+.DESCRIPTION
+    Removing vApp Network from running vApp. (You can not do this action when running vApp from the UI.)
+.EXAMPLE
+    Remove-vAppNetwork -OrgVdv "My Org Vdc" -vAppName "My vApp" -NeworkName "My network"
+.OUTPUTS
+    Return XML Object with update vApp task object (May be used for request task status)
+#>
 function Remove-vAppNetwork {
     #region Params
     [OutputType([xml])]
@@ -159,9 +206,9 @@ function Remove-vAppNetwork {
         "1" {
             $OrgVdcDef = Invoke-vCloudRequest -Method Get -Href $OrgVdcLink.AdminVdcReferences.AdminVdcReference.href
 
-            if (($OrgVdcDef.AdminVdc.ResourceEntities.ResourceEntity | ? {$_.name -eq $vAppName -and $_.type -eq 'application/vnd.vmware.vcloud.vApp+xml'}) -ne $null) {
+            if (($OrgVdcDef.AdminVdc.ResourceEntities.ResourceEntity | Where-Object {$_.name -eq $vAppName -and $_.type -eq 'application/vnd.vmware.vcloud.vApp+xml'}) -ne $null) {
                     
-                $vAppDef = Invoke-vCloudRequest -Href ($OrgVdcDef.AdminVdc.ResourceEntities.ResourceEntity | ? {$_.name -eq $vAppName -and $_.type -eq 'application/vnd.vmware.vcloud.vApp+xml'}).href -Method Get
+                $vAppDef = Invoke-vCloudRequest -Href ($OrgVdcDef.AdminVdc.ResourceEntities.ResourceEntity | Where-Object {$_.name -eq $vAppName -and $_.type -eq 'application/vnd.vmware.vcloud.vApp+xml'}).href -Method Get
 
                 $question = "Delete `'$NetworkName`' from `'$vAppName`'?"
                 $message = 'Are you sure you want to proceed?'
@@ -170,7 +217,7 @@ function Remove-vAppNetwork {
                 $choices.Add((New-Object Management.Automation.Host.ChoiceDescription -ArgumentList 'Yes'))
                 $choices.Add((New-Object Management.Automation.Host.ChoiceDescription -ArgumentList '&No'))
 
-                if (($vAppDef.VApp.NetworkConfigSection.NetworkConfig | ? {$_.networkName -eq $NetworkName}) -ne $null) {
+                if (($vAppDef.VApp.NetworkConfigSection.NetworkConfig | Where-Object {$_.networkName -eq $NetworkName}) -ne $null) {
                         
                     $networkConfigSection = Invoke-vCloudRequest -Method Get -Href $vAppDef.vapp.NetworkConfigSection.href
                         
@@ -242,4 +289,4 @@ function Show-DatastoreThreasholds {
 
 
 
-Export-ModuleMember -Function "Find-*", "Invoke-*", "Remove-*", "Show-*", "Get-*"
+Export-ModuleMember -Function "Find-*", "Invoke-*", "Remove-*", "Show-*"
