@@ -58,7 +58,7 @@ function Invoke-vCloudRequest {
     $connection = Get-Connection
 
     if ($connection -ne $null -and $connection.IsConnected) {
-
+        
         $webclient = New-Object System.Net.WebClient
         $webclient.Headers.Add("x-vcloud-authorization", $connection.SessionSecret)
         $webclient.Headers.Add("Accept", "application/*+xml;version=$Version")
@@ -169,7 +169,7 @@ function Find-vCloudObject {
     $connection = Get-Connection
 
     if ($connection -ne $null -and $connection.IsConnected) {
-        Invoke-vCloudRequest -Href "$($connection.ServiceUri)/query?type=$QueryType&pageSize=$PageSize&format=$Format&filter=$Filter" -Method Get
+        Invoke-vCloudRequest -Href "$($connection.ServiceUri)query?type=$QueryType&pageSize=$PageSize&format=$Format&filter=$Filter" -Method Get
     }
 
 }
@@ -287,6 +287,17 @@ function Show-DatastoreThreasholds {
     return $out
 }
 
+function Get-OrgNameById {
+    [CmdletBinding()]
+    Param(
+        [parameter(Mandatory = $true)]
+        [string]$Id
+    )
 
+    $connection = Get-Connection  
 
-Export-ModuleMember -Function "Find-*", "Invoke-*", "Remove-*", "Show-*"
+    $connection.ExtensionData.OrganizationReferences.OrganizationReference | Where-Object {$_.Href -like "*$Id*"} | Select -ExpandProperty Name
+    
+}
+
+Export-ModuleMember -Function "Find-*", "Invoke-*", "Remove-*", "Show-*", "Get-*"
